@@ -144,7 +144,31 @@ baselines_named <- baselines.small %>%
   # Clean up and create a unique baseline label
   mutate(baseline_name = paste0(start_id, "_", end_id)) |>
   filter(start_id != end_id) |>
-  select(start_id, end_id, geom=x, baseline_name)
+
+  mutate(
+    # Standardize direction: column 1 gets the smaller ID, column 2 gets the larger ID
+    true_start = pmin(start_id, end_id),
+    true_end   = pmax(start_id, end_id)
+  )|>
+
+  # Group and slice to force unique combinations
+  group_by(true_start, true_end) |>
+  slice(1) |>
+  ungroup() |>
+
+  # Create final label strings
+  mutate(baseline_name = paste0(true_start, "_", true_end)) |>
+
+  # Explicitly select attributes, avoiding standard sf rename conflicts
+  as_tibble() |>
+  select(
+    start_id = true_start,
+    end_id = true_end,
+    baseline_name,
+    geom = x
+  ) |>
+  # Convert back to an official sf object with the correct geometry column assigned
+  st_as_sf(sf_column_name = "geom")
 
 plotIt=F
 if(plotIt){

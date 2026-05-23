@@ -6,7 +6,6 @@ library(curl)
 num_cores <- detectCores()/2 - 1
 oldwd <- getwd()
 setwd(this.path::this.dir())
-authToken = "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ.eyJ0eXBlIjoiVXNlciIsInVpZCI6ImZwaXJvdHRpIiwiZXhwIjoxNzgzNzA0MzQxLCJpYXQiOjE3Nzg1MjAzNDEsImlzcyI6Imh0dHBzOi8vdXJzLmVhcnRoZGF0YS5uYXNhLmdvdiIsImlkZW50aXR5X3Byb3ZpZGVyIjoiZWRsX29wcyIsImFjciI6ImVkbCIsImFzc3VyYW5jZV9sZXZlbCI6M30.7MzocbnbnY0FG73OZxwKGo4ug6ahOBeLV3D4aPIbpZTrH2B0n-zeuU4YlYmnmWomJbJbCAPz0Syx1dtYoTpjP9b5uddHbR3OUbjF85QPxE3nMwDydn6f6BVUAAbw8P07f-mlmjVf1rPvvQC_Fb974lbfTUqsePOdayqPZNe9-RaLZ_86gjlN_9FrEhPIIPd5vfXw1MayE9G81Gf3wsdi0QZOzlwihVtRqRpueKPaarCITMk4w17_Aeg1SDM-2tbkz59otZHPi7M9epDILQ4BIse3bFeq9Kq7We2R1WVAUen91dcgYlq0FV4-AOTkK9g74KDZmmzW2W_JH9hwLgSvDQ"
 message("Using ", num_cores, " cores...")
 temp_log_dir <- "parallel_logs"
 if(!dir.exists(temp_log_dir)) dir.create(temp_log_dir)
@@ -22,52 +21,9 @@ if(!exists("baselines_named")){
 out.root <- dir.with.POS
 if(!dir.exists(out.root)) dir.create(out.root)
 
-conf_file <- file.path(this.path::this.dir(), "rtklibConf.conf")
+conf_file <- file.path(this.path::this.dir(), "rtklibConfUp.conf")
+conf_file <- file.path(this.path::this.dir(), "rtklibConfUp2.conf")
 cmd <- "rnx2rtkp"
-
-download_nav_r <- function(date, destination, force=F) {
-  year <- format(date, "%y")
-  full_year <- format(date, "%Y")
-  doy <- sprintf("%03d", as.numeric(format(date, "%j")))
-
-  # 2. Construct the RINEX 3 filename pattern
-  # Note: The '00' in '20260200000' represents HHMMSS (start of day)
-  file_name <- sprintf("BRDC00IGS_R_%s%s0000_01D_MN.rnx.gz", full_year, doy)
-
-  # 3. Construct the CDDIS Path
-  # https://cddis.nasa.gov/archive/gnss/data/daily/2024/brdc/
-  # Structure: /gnss/data/daily/YYYY/brdc/YYYY/
-  url <- sprintf("https://cddis.nasa.gov/archive/gnss/data/daily/%s/brdc/%s",
-                 full_year, file_name)
-  dest_file <- file.path(destination, basename(url))
-  if(file.exists(dest_file) && !force){
-    return()
-  }
-  # 4. Download using curl (handles NASA's authentication/redirects best)
-  message(paste("Downloading:", file_name))
-
-  # -L follows redirects, -n or -u handles credentials
-  cmd <- sprintf("curl -L -H \"%s\" -o %s %s",
-                 authToken, dest_file, url)
-
-
-  output <- system(cmd)
-  if(file.exists(dest_file)){
-    exit_status <- system(paste("uncompress -f", dest_file),
-                          ignore.stdout = TRUE,
-                          ignore.stderr = TRUE)
-
-    if (exit_status != 0) {
-      # Handle the error gracefully
-      message(sprintf("System Error: 'uncompress' failed on file %s with code %d", dest_file, exit_status))
-      # You can trigger a fallback action here or stop execution:
-      stop("Decompression failed.")
-      return(paste("FAILED :", basename(dest_file)))
-    }
-    return(paste("SUCCESS:", basename(dest_file)))
-  }
-  return(cmd)
-}
 
 #' runRTKLIB
 #'
@@ -75,13 +31,16 @@ download_nav_r <- function(date, destination, force=F) {
 #' @param B - full path to base rinex
 #' @param R - full path to rover rinex
 #' @param NAV  - full path to nav  rinex
+#' @param SP3  - full path to precise ephemeris SP3  rinex
+#' @param BIA  - full path to BIA for ppp   rinex
 #' @param dry - if true it returns string of command, does not run
 #'
 #' @returns
 #' @export
 #'
 #' @examples
-runRTKLIB <- function(out.pos, B, R, NAV, conf_file, cmd, dry=TRUE, force=F) {
+runRTKLIB <- function(out.pos, B, R, NAV, SP3=NULL, BIA=NULL,
+                      conf_file=NULL, cmd=NULL, dry=TRUE, force=F) {
   # 1. Thread-safe directory check
   # 'recursive = TRUE' and ignoring warnings prevents errors if another
   # thread creates the directory while this one is trying.
@@ -103,6 +62,15 @@ runRTKLIB <- function(out.pos, B, R, NAV, conf_file, cmd, dry=TRUE, force=F) {
   }
   args <- c("-k", conf_file, "-o", out.pos, R, B, NAV)
 
+  if(!is.null(SP3)){
+    args <-  c(args, SP3)
+  }
+  if(!is.null(BIA)){
+    args <-  c(args, BIA)
+  }
+
+
+
   if(!dry) {
     # 2. Capture output to avoid garbled terminal logs
     result <- system2(command = cmd, args = args, stdout = FALSE, stderr = FALSE)
@@ -120,14 +88,19 @@ runRTKLIB <- function(out.pos, B, R, NAV, conf_file, cmd, dry=TRUE, force=F) {
 
 
 timecoverage <- list()
+load( file="timecoverage.rda")
 ## loop baselines -----
 ## files should be in folders with the name of station, then either 1sec or 30sec, and then
 ##the year, e.g. /gnss_data/BORC/30sec/2025/borc1520.25d.Z
 
 nav.files <- list.files(nav.base, pattern=".*\\.rnx$", recursive = T, full.names = T)
-nav.doy <- as.integer(substr(gsub("BRDC00IGS_R_","", basename(nav.files),fixed = T), 5,7))
-nav.years <- as.integer(substr(gsub("BRDC00IGS_R_","", basename(nav.files),fixed = T), 1,4))
-nav.dates <- as.Date(nav.doy - 1, origin = paste0(nav.years, "-01-01"))
+sp3.files <- list.files(nav.base, pattern=".*\\.sp3$", recursive = T, ignore.case = T, full.names = T)
+bia.files <- list.files(nav.base, pattern=".*\\.bia$", recursive = T, ignore.case = T, full.names = T)
+nav.dates <- extract_rinex_date(basename(nav.files))
+sp3.dates <- extract_rinex_date(basename(sp3.files))
+bia.dates <- extract_rinex_date(basename(bia.files))
+##
+baselines_named_AT <- data.frame(start_id="inbk", end_id="pat2", baseline_name="inbk_pat2")
 for( i in 1:nrow(baselines_named)){
 
   tw <- baselines_named[i,]
@@ -136,18 +109,27 @@ for( i in 1:nrow(baselines_named)){
   cat(" ================ START ===============\n======  ", as.character(Sys.time()), " =====\n ==================================\n",
       file = logfile  )
 
-  BASE <- sprintf("%s/%s",dir.with.rinex, tw$start_id)
-  ROVER <- sprintf("%s/%s",dir.with.rinex, tw$end_id )
-  bases <- list.files(BASE, pattern=".*\\.Z$", recursive = T, full.names = T)
-  rovers <- list.files(ROVER, pattern=".*\\.Z$", recursive = T, full.names = T)
+  # BASE <- sprintf("%s/%s",dir.with.rinex, tw$start_id)
+  # ROVER <- sprintf("%s/%s",dir.with.rinex, tw$end_id )
+  BASE <-   tw$start_id
+  ROVER <-  tw$end_id
+  bases <- list.files(dir.with.rinex, pattern=sprintf("^%s.*\\.(Z|zip|obs|o)$", tw$start_id),
+                      recursive = T,
+                      ignore.case = T,
+                      full.names = T)
+  rovers <- list.files(dir.with.rinex, pattern=sprintf("^%s.*\\.(Z|zip|obs|o)$", tw$end_id),
+                       recursive = T,
+                       ignore.case = T,
+                       full.names = T)
 
-  doy <- as.integer(substr(gsub(tolower(tw$start_id),"", basename(bases),fixed = T), 1,3))
-  yy <- (substr(gsub(BASE,"", bases,fixed = T), 8,11))
-  TSbase <-    as.Date(doy - 1, origin = paste0(yy, "-01-01"))
+  # dates.bases <- extract_rinex_date(bases)
+  # doy <- as.integer(substr(gsub(tolower(tw$start_id),"", basename(bases),fixed = T), 1,3))
+  # yy <- (substr(gsub(BASE,"", bases,fixed = T), 8,11))
+  TSbase <- extract_rinex_date(bases)
 
-  doy <- as.integer(substr(gsub(tolower(tw$end_id),"", basename(rovers),fixed = T), 1,3))
-  yy <- (substr(gsub(ROVER,"", rovers,fixed = T), 8,11))
-  TSrover <- as.Date(doy - 1, origin = paste0(yy, "-01-01"))
+  # doy <- as.integer(substr(gsub(tolower(tw$end_id),"", basename(rovers),fixed = T), 1,3))
+  # yy <- (substr(gsub(ROVER,"", rovers,fixed = T), 8,11))
+  TSrover <- extract_rinex_date(rovers)
 
   timecoverage[[basename(BASE)]] <- TSbase
   timecoverage[[basename(ROVER)]] <- TSrover
@@ -165,20 +147,30 @@ for( i in 1:nrow(baselines_named)){
 
   # Define global variables locally so workers inherit them via fork
   NAV_idx_missing <- which(!ids$roverDates%in%nav.dates)
+  SP3_idx_missing <- which(!ids$roverDates%in%sp3.dates)
   if(length(NAV_idx_missing)>0) {
     message(paste(NAV_idx_missing))
     msgs <- lapply(NAV_idx_missing, function(datNAV){
       download_nav_r(ids$roverDates[[datNAV]], nav.base )
     })
   }
+  if(length(SP3_idx_missing)>0) {
+    message(paste(SP3_idx_missing))
+    msgs <- lapply(SP3_idx_missing, function(datNAV){
+      download_precise_r(ids$roverDates[[datNAV]], nav.base )
+      download_precise_r(ids$roverDates[[datNAV]], nav.base,type = "bia" )
+    })
+  }
   # cat(unlist(msgs), sep = "\n", file = logfile, append = TRUE)
 
-  conf_file_path <- conf_file
+
   rtk_cmd <- cmd
   # pbmc
   results <- pbmclapply(1:nrow(ids), function(row_idx) {
     row_data <- ids[row_idx, ]
     NAV_idx <- which(nav.dates == row_data$roverDates)
+    SP3_idx <- which(sp3.dates == row_data$roverDates)
+    BIA_idx <- which(bia.dates == row_data$roverDates)
 
     if(length(NAV_idx) == 0) {
       return(paste("MISSING NAV"))
@@ -192,7 +184,9 @@ for( i in 1:nrow(baselines_named)){
       B = row_data$bases,
       R = row_data$rovers,
       NAV = nav.files[[NAV_idx]],
-      conf_file = conf_file_path,
+      SP3 = sp3.files[[SP3_idx]],
+      BIA = sp3.files[[BIA_idx]],
+      conf_file = conf_file,
       cmd = rtk_cmd,
       dry = FALSE,
       force = T

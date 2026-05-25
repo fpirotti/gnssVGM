@@ -7,62 +7,7 @@ source("0000_global.R")
 ## it then creates a TIN network for possible post processing baselines < 100 km
 ## so that baselines can be processed by rtklib using the next R script
 setwd(this.path::this.dir())
-extract_rinex_position <- function(file_path) {
-  con <- NULL
 
-  # Check if we need to force decompression via system pipe for .Z / .gz files
-  if (endsWith(file_path, ".Z") || endsWith(file_path, ".gz")) {
-
-    # Windows native alternative if gzip isn't in PATH, otherwise standard Unix/Mac pipe
-    if (.Platform$OS.type == "windows") {
-      # Windows 10/11 has 'tar' built-in, which handles .Z decompression flawlessly
-      cmd <- sprintf("tar -xf \"%s\" -O", file_path)
-    } else {
-      # Linux / Mac standard command
-      cmd <- sprintf("gzip -dc \"%s\"", file_path)
-    }
-
-    # Open a text pipe to catch the uncompressed stream
-    con <- pipe(cmd, open = "rt")
-
-  } else if (endsWith(file_path, ".zip")) {
-    unzippeds <- unzip(file_path, list = TRUE)
-    unzipped <- grep("o$",unzippeds$Name, value = T)
-    if(length(unzipped)==0){
-      browser()
-    }
-    con <- unz(file_path, unzipped[[1]], open = "rt")
-  } else {
-    con <- file(file_path, open = "rt")
-  }
-
-  # Ensure connection closes safely
-  on.exit(if (!is.null(con)) close(con))
-
-  # Now we can safely read plain text lines because the OS did the heavy unpacking!
-  lines <- tryCatch(
-    readLines(con, n = 50, warn = FALSE),
-    error = function(e) return(NULL)
-  )
-
-
-  if (is.null(lines) || length(lines) == 0) return(NULL)
-
-  # Scan for coordinates
-  for (line in lines) {
-    if (grepl("APPROX POSITION XYZ", line)) {
-      matches <- unlist(regmatches(line, gregexpr("-?\\d+\\.\\d+|-?\\d+", line)))
-      coords <- as.numeric(matches[1:3])
-
-      if (!any(is.na(coords)) && length(coords) == 3) {
-        return(c(X = coords[1], Y = coords[2], Z = coords[3]))
-      }
-    }
-    if (grepl("END OF HEADER", line)) break
-  }
-
-  return(NULL)
-}
 ## 1. READS ALL STATION LOCATIONS -----
 # put here the path toe rinex of stations e.g.
 # /archivio/shared/gnssVGM/gnss_data if rinex in
@@ -74,11 +19,13 @@ if(!file.exists("stz.rda")){
   stz.coord <- list()
   for(station in stations){
     stzname <- station #gsub("gnss_data/", "", station)
-    dat <- list.files(pattern = sprintf("%s.*\\.(Z|zip)", stzname),ignore.case = T,
+    dat <- list.files("archivioLink/gnss_data", pattern = sprintf("%s.*\\.(Z|zip|obs|o)$", stzname),
+                      ignore.case = T,
                       full.names = T, recursive = T)
 
     cli::cli_inform(stzname)
     if(length(dat)==0)   {
+      browser()
       cli::cli_inform("non found!")
       next
     }
@@ -115,7 +62,7 @@ if(!file.exists("stz.rda")){
 } else {
   load(file="stz.rda")
 }
-
+p_sf <- p_sf |> filter(lat < 47)
 ## 2. CREATES A TIN
 p_sf.latlong <- p_sf
 p_sf <- p_sf |> sf::st_transform(3035)
@@ -183,8 +130,9 @@ if(plotIt){
     p<-ggplot(p_sf) +
       layer_spatial(data = provs,
                     aes(fill = substr(NUTS_ID, 1,4)), ,
-                    show.legend = FALSE, alpha=1,
+                    show.legend = FALSE, alpha=0.8,
                     linewidth = 0.4) +
+      scale_fill_grey(start = 0.2, end = 0.9)+
        # annotation_map_tile(type = "cartolight", zoom = 8) +
     # Draw the TIN Baselines
     geom_sf(data = baselines.small,
@@ -218,9 +166,9 @@ if(plotIt){
     print(p)
   dev.off()
 
-  png("mappedBaselinesNoBG.png", res=300, width=1800, height=1800)
+  png("mappedBaselinesYesBG.png", res=300, width=1800, height=1800)
   p<-ggplot(p_sf) +
-    # annotation_map_tile(type = "cartolight", zoom = 8) +
+     annotation_map_tile(type = "cartolight", zoom = 8) +
     # Draw the TIN Baselines
     geom_sf(data = baselines.small,
             color = "steelblue",

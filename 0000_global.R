@@ -11,58 +11,82 @@ extract_rinex_date <- function(file_path) {
   filename <- basename(file_path) |> str_to_lower()
   path_lower <- str_to_lower(file_path)
 
-  # -------------------------------------------------------------------------
-  # FORMAT 1: Modern RINEX 3/4 Long Filename (e.g., "aaaa00bbb_r_YYYYDOYHHMM_...")
-  # Matches a 4-digit year followed by a 3-digit DOY (total 7 digits)
-  # -------------------------------------------------------------------------
-r3_match <- str_match(filename, regex("_[rs]_(20\\d{2})(\\d{3})\\d{4}_", ignore_case = TRUE))
-if (!is.na(r3_match[1])) {
+
+    # FORMAT 1: Modern RINEX 3/4 Long Filename (e.g., "aaaa00bbb_r_YYYYDOYHHMM_...")
+    # Matches a 4-digit year followed by a 3-digit DOY (total 7 digits)
+  r3_match <- str_match(filename, regex("_[rs]_(20\\d{2})(\\d{3})\\d{4}_", ignore_case = TRUE))
+  if (!anyNA(r3_match[1])) {
+      year <- as.integer(r3_match[,2])
+      doy  <- as.integer(r3_match[,3])
+      dd <- as.Date(doy - 1, origin = paste0(year, "-01-01"))
+      if(anyNA(dd)){
+        browser()
+      }
+      return(dd)
+  }
+  r3_match <- str_match(filename, "(\\d{4})_(\\d{3})\\.")
+  if (!anyNA(r3_match[1])) {
     year <- as.integer(r3_match[,2])
     doy  <- as.integer(r3_match[,3])
-    return(as.Date(doy - 1, origin = paste0(year, "-01-01")))
-}
-r3_match <- str_match(filename, "(\\d{4})_(\\d{3})\\.")
-if (!is.na(r3_match[1])) {
-  year <- as.integer(r3_match[,2])
-  doy  <- as.integer(r3_match[,3])
-  return(as.Date(doy - 1, origin = paste0(year, "-01-01")))
-}
+    dd <-as.Date(doy - 1, origin = paste0(year, "-01-01"))
+    if(anyNA(dd)){
+      browser()
+    }
+    return(dd)
+  }
 
-r3_match <- str_match(path_lower, "(?i)/(20\\d{2})/(\\d{3})/.*")
-if (!is.na(r3_match[1])) {
-  year <- as.integer(r3_match[,2])
-  doy  <- as.integer(r3_match[,3])
-  return(as.Date(doy - 1, origin = paste0(year, "-01-01")))
-}
+  r3_match <- str_match(path_lower, "(?i)/(20\\d{2})/(\\d{3})/.*")
+  if (!anyNA(r3_match[1])) {
+    year <- as.integer(r3_match[,2])
+    doy  <- as.integer(r3_match[,3])
+    dd <-as.Date(doy - 1, origin = paste0(year, "-01-01"))
+    if(anyNA(dd)){
+      browser()
+    }
+    return(dd)
+  }
 
-r3_match <- str_match(path_lower, "_(\\d{4})(\\d{3})")
-if (!is.na(r3_match[1])) {
-  year <- as.integer(r3_match[,2])
-  doy  <- as.integer(r3_match[,3])
-  return(as.Date(doy - 1, origin = paste0(year, "-01-01")))
-}
-  # -------------------------------------------------------------------------
-  # FORMAT 2: Standard Legacy RINEX 2 Filename (e.g., "ssssddd0.yyo")
-  # Matches 4 chars, 3-digit DOY, 1 char/digit, a dot, and a 2-digit year
-  # -------------------------------------------------------------------------
-  r2_match <- str_match(filename, regex("^[a-z0-9]{4}(\\d{3})[a-z0-9]\\.(\\d{2})[o|d|n|g|l|m]", ignore_case = TRUE) )
-  if (!is.na(r2_match[1])) {
-    doy      <- as.integer(r2_match[,1])
-    year_2d  <- as.integer(r2_match[,2])
+  r3_match <- str_match(path_lower, "_(\\d{4})(\\d{3})")
+  if (!anyNA(r3_match[1])) {
+    year <- as.integer(r3_match[,2])
+    doy  <- as.integer(r3_match[,3])
+
+    dd <-as.Date(doy - 1, origin = paste0(year, "-01-01"))
+    if(anyNA(dd)){
+      browser()
+    }
+    return(dd)
+  }
+    # -------------------------------------------------------------------------
+    # FORMAT 2: Standard Legacy RINEX 2 Filename (e.g., "ssssddd0.yyo")
+    # Matches 4 chars, 3-digit DOY, 1 char/digit, a dot, and a 2-digit year
+    # -------------------------------------------------------------------------
+  r3_match <- str_match(filename, regex("^[a-z0-9]{4}(\\d{3})[a-z0-9]\\.(\\d{2})[o|d|n|g|l|m]", ignore_case = TRUE) )
+  if (!anyNA(r3_match[1])) {
+    doy      <- as.integer(r3_match[,2])
+    year_2d  <- as.integer(r3_match[,3])
     # Handle the century window (e.g., 80-99 = 1900s, 00-79 = 2000s)
     year     <- if_else(year_2d >= 80, 1900 + year_2d, 2000 + year_2d)
-    return(as.Date(doy - 1, origin = paste0(year, "-01-01")))
+    dd <-as.Date(doy - 1, origin = paste0(year, "-01-01"))
+    if(anyNA(dd)){
+      browser()
+    }
+    return(dd)
   }
 
   # -------------------------------------------------------------------------
   # FORMAT 3: Year/DOY hidden in the Folder Structure (e.g., "/2026/143/samp.26o")
   # Looks for a 4-digit folder followed by a 3-digit DOY folder
   # -------------------------------------------------------------------------
-  path_match <- str_match(path_lower, "/(20\\d{2})/(\\d{3})/")
-  if (!is.na(path_match[1])) {
-    year <- as.integer(path_match[2])
-    doy  <- as.integer(path_match[3])
-    return(as.Date(doy - 1, origin = paste0(year, "-01-01")))
+  r3_match <- str_match(path_lower, "/(20\\d{2})/(\\d{3})/")
+  if (!anyNA(r3_match[1])) {
+    year <- as.integer(r3_match[,2])
+    doy  <- as.integer(r3_match[,3])
+    dd <-as.Date(doy - 1, origin = paste0(year, "-01-01"))
+    if(anyNA(dd)){
+      browser()
+    }
+    return(dd)
   }
   # -------------------------------------------------------------------------
   # FORMAT 4: Hatanaka / Compressed format variations (e.g., "samp1430.26d.z")
@@ -70,18 +94,101 @@ if (!is.na(r3_match[1])) {
   # -------------------------------------------------------------------------
   cleaned_filename <- str_remove(filename, "\\.(z|gz|bz2|zip)$")
   r2_comp_match <- str_match(cleaned_filename, regex("^[a-z0-9]{4}(\\d{3})[a-z0-9]\\.(\\d{2})[d|o]", ignore_case = TRUE) )
-  if (!is.na(r2_comp_match[1])) {
+  if (!anyNA(r2_comp_match[1])) {
     doy      <- as.integer(r2_comp_match[1])
     year_2d  <- as.integer(r2_comp_match[2])
     year     <- if_else(year_2d >= 80, 1900 + year_2d, 2000 + year_2d)
-    return(as.Date(doy - 1, origin = paste0(year, "-01-01")))
+    dd <- as.Date(doy - 1, origin = paste0(year, "-01-01"))
+    if(anyNA(dd)){
+      browser()
+    }
+    return(dd)
   }
 
+
+  r3_match <- str_match(path_lower, "(?i)igs(\\d{4})(\\d{1})\\.")
+
+  if (!anyNA(r3_match[1])) {
+    gps_week <- as.integer(r3_match[, 2])
+    gps_day  <- as.integer(r3_match[, 3])
+
+    # Calculate the actual date from GPS Epoch
+    gps_date <- as.Date("1980-01-06") + (gps_week * 7) + gps_day
+
+    # Extract year and Day of Year (doy) to match your original variables
+    year <- as.integer(format(gps_date, "%Y"))
+    doy  <- as.integer(format(gps_date, "%j")) # %j gives day of year (001-366)
+
+    # Your original Date reconstruction logic
+    dd <- as.Date(doy - 1, origin = paste0(year, "-01-01"))
+
+    if (anyNA(dd)) {
+      browser()
+    }
+
+    return(dd)
+  }
+  stop("Should not be here")
   # Return NA if all regex patterns fail to parse a valid date
   return(NA)
 }
 
+extract_rinex_position <- function(file_path) {
+  con <- NULL
 
+  # Check if we need to force decompression via system pipe for .Z / .gz files
+  if (endsWith(file_path, ".Z") || endsWith(file_path, ".gz")) {
+
+    # Windows native alternative if gzip isn't in PATH, otherwise standard Unix/Mac pipe
+    if (.Platform$OS.type == "windows") {
+      # Windows 10/11 has 'tar' built-in, which handles .Z decompression flawlessly
+      cmd <- sprintf("tar -xf \"%s\" -O", file_path)
+    } else {
+      # Linux / Mac standard command
+      cmd <- sprintf("gzip -dc \"%s\"", file_path)
+    }
+
+    # Open a text pipe to catch the uncompressed stream
+    con <- pipe(cmd, open = "rt")
+
+  } else if (endsWith(file_path, ".zip")) {
+    unzippeds <- unzip(file_path, list = TRUE)
+    unzipped <- grep("o$",unzippeds$Name, value = T)
+    if(length(unzipped)==0){
+      browser()
+    }
+    con <- unz(file_path, unzipped[[1]], open = "rt")
+  } else {
+    con <- file(file_path, open = "rt")
+  }
+
+  # Ensure connection closes safely
+  on.exit(if (!is.null(con)) close(con))
+
+  # Now we can safely read plain text lines because the OS did the heavy unpacking!
+  lines <- tryCatch(
+    readLines(con, n = 50, warn = FALSE),
+    error = function(e) return(NULL)
+  )
+
+
+  if (is.null(lines) || length(lines) == 0) return(NULL)
+
+  # Scan for coordinates
+  for (line in lines) {
+    if (grepl("APPROX POSITION XYZ", line)) {
+      matches <- unlist(regmatches(line, gregexpr("-?\\d+\\.\\d+|-?\\d+", line)))
+      coords <- as.numeric(matches[1:3])
+
+      if (!any(anyNA(coords)) && length(coords) == 3) {
+        return(c(X = coords[1], Y = coords[2], Z = coords[3]))
+      }
+    }
+    if (grepl("END OF HEADER", line)) break
+  }
+
+  return(NULL)
+}
 
 download_precise_r <- function(date, destination, type = c("sp3", "bia"), force = FALSE) {
   type <- match.arg(type)

@@ -89,7 +89,7 @@ process <- function(root){
   df$relY <- df$Y - median.y
   df$relZ <- df$Z - median
 
-  png( file.path("PLOTS", paste0(basename(root), "_preciseWithSp3_ionoopt-brdc_tropopt-ztdgrad_sateph-precise.png")) , width=2000,
+  png( file.path("PLOTS", paste0(basename(root), "_preciseWithSp3_ionoopt-dual-freq_tropopt-ztdgrad_sateph-precise.png")) , width=2000,
        height=4000,
        res=200)
 

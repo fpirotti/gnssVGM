@@ -21,8 +21,8 @@ if(!exists("baselines_named")){
 out.root <- dir.with.POS
 if(!dir.exists(out.root)) dir.create(out.root)
 
-conf_file <- file.path(this.path::this.dir(), "rtklibConfUp.conf")
-conf_file <- file.path(this.path::this.dir(), "rtklibConfUp2.conf")
+# conf_file <- file.path(this.path::this.dir(), "rtklibConfUp.conf")
+conf_file <- file.path(this.path::this.dir(), "confFiles/rtklibConf_ionoopt-brdc_tropopt-ztdgrad_sateph-precise.conf")
 cmd <- "rnx2rtkp"
 
 #' runRTKLIB
@@ -97,16 +97,28 @@ nav.files <- list.files(nav.base, pattern=".*\\.rnx$", recursive = T, full.names
 sp3.files <- list.files(nav.base, pattern=".*\\.sp3$", recursive = T, ignore.case = T, full.names = T)
 bia.files <- list.files(nav.base, pattern=".*\\.bia$", recursive = T, ignore.case = T, full.names = T)
 nav.dates <- extract_rinex_date(basename(nav.files))
-sp3.dates <- extract_rinex_date(basename(sp3.files))
+sp3.dates <-  Date(length(sp3.files))
+sp3.dates[nchar(basename(sp3.files))>13] <- extract_rinex_date(basename(sp3.files)[nchar(basename(sp3.files))>13])
+sp3.dates[is.na(sp3.dates)] <- extract_rinex_date(basename(sp3.files)[is.na(sp3.dates)])
+if(anyNA(sp3.dates)){
+  browser()
+  stop("Some na dates in SP3")
+}
 bia.dates <- extract_rinex_date(basename(bia.files))
+if(anyNA(sp3.dates)){
+  browser()
+  stop("Some na dates in SP3")
+}
 ##
 baselines_named_AT <- data.frame(start_id="inbk", end_id="pat2", baseline_name="inbk_pat2")
 for( i in 1:nrow(baselines_named)){
 
   tw <- baselines_named[i,]
   message(tw$baseline_name)
+
   logfile  <- file.path(temp_log_dir, paste0(tw$baseline_name, ".log"))
-  cat(" ================ START ===============\n======  ", as.character(Sys.time()), " =====\n ==================================\n",
+  cat("================ START ===============\n====  ", as.character(Sys.time()),
+      "\n======================================\n",
       file = logfile  )
 
   # BASE <- sprintf("%s/%s",dir.with.rinex, tw$start_id)
@@ -125,7 +137,11 @@ for( i in 1:nrow(baselines_named)){
   # dates.bases <- extract_rinex_date(bases)
   # doy <- as.integer(substr(gsub(tolower(tw$start_id),"", basename(bases),fixed = T), 1,3))
   # yy <- (substr(gsub(BASE,"", bases,fixed = T), 8,11))
-  TSbase <- extract_rinex_date(bases)
+  TSbase <- tryCatch(extract_rinex_date(bases),
+                     warning=function(e){
+                       browser()
+                       stop(e$message)
+                       })
 
   # doy <- as.integer(substr(gsub(tolower(tw$end_id),"", basename(rovers),fixed = T), 1,3))
   # yy <- (substr(gsub(ROVER,"", rovers,fixed = T), 8,11))
@@ -148,34 +164,47 @@ for( i in 1:nrow(baselines_named)){
   # Define global variables locally so workers inherit them via fork
   NAV_idx_missing <- which(!ids$roverDates%in%nav.dates)
   SP3_idx_missing <- which(!ids$roverDates%in%sp3.dates)
+  BIA_idx_missing <- which(!ids$roverDates%in%bia.dates)
   if(length(NAV_idx_missing)>0) {
-    message(paste(NAV_idx_missing))
     msgs <- lapply(NAV_idx_missing, function(datNAV){
       download_nav_r(ids$roverDates[[datNAV]], nav.base )
     })
   }
+  cat("=== NAV files match\n", file = logfile, append = TRUE)
+  cat(unlist(msgs[!grepl("^SUCCESS", msgs)]), sep = "\n", file = logfile, append = TRUE)
   if(length(SP3_idx_missing)>0) {
-    message(paste(SP3_idx_missing))
     msgs <- lapply(SP3_idx_missing, function(datNAV){
       download_precise_r(ids$roverDates[[datNAV]], nav.base )
-      download_precise_r(ids$roverDates[[datNAV]], nav.base,type = "bia" )
     })
   }
-  # cat(unlist(msgs), sep = "\n", file = logfile, append = TRUE)
 
+  cat("=== SP3 files match\n", file = logfile, append = TRUE)
+  cat(unlist(msgs[!grepl("^SUCCESS", msgs)]), sep = "\n", file = logfile, append = TRUE)
+
+
+  # if(length(BIA_idx_missing)>0) {
+  #   msgs <- lapply(BIA_idx_missing, function(datNAV){
+  #     download_precise_r(ids$roverDates[[datNAV]], nav.base, type = "bia" )
+  #   })
+  # }
+  # cat("=== BIA files match\n", file = logfile, append = TRUE)
+  # cat(unlist(msgs[!grepl("^SUCCESS", msgs)]), sep = "\n", file = logfile, append = TRUE)
 
   rtk_cmd <- cmd
-  # pbmc
+
   results <- pbmclapply(1:nrow(ids), function(row_idx) {
     row_data <- ids[row_idx, ]
     NAV_idx <- which(nav.dates == row_data$roverDates)
     SP3_idx <- which(sp3.dates == row_data$roverDates)
-    BIA_idx <- which(bia.dates == row_data$roverDates)
+    # BIA_idx <- which(bia.dates == row_data$roverDates)
 
-    if(length(NAV_idx) == 0) {
-      return(paste("MISSING NAV"))
+    if(length(NAV_idx) == 0 ) {
+      return(paste("MISSING NAV in ", row_data$roverDates))
     }
 
+    if(length(SP3_idx) == 0 ) {
+      return(paste("MISSING SP3 in ", row_data$roverDates))
+    }
     baseline <- file.path(out.root, tw$baseline_name)
     # Run the thread-safe function
     # Each worker returns a string
@@ -185,7 +214,7 @@ for( i in 1:nrow(baselines_named)){
       R = row_data$rovers,
       NAV = nav.files[[NAV_idx]],
       SP3 = sp3.files[[SP3_idx]],
-      BIA = sp3.files[[BIA_idx]],
+      # BIA = bia.files[[BIA_idx]],
       conf_file = conf_file,
       cmd = rtk_cmd,
       dry = FALSE,
